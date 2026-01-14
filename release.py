@@ -56,6 +56,10 @@ SOURCES = {
         "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/accelerated-domains.china.conf",
         "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf",
         "https://raw.githubusercontent.com/neodevpro/neodevhost/refs/heads/master/allow",
+
+"https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/PrivateTracker/PrivateTracker.yaml",
+
+
     ],
     "gfwlist_base64": [
         "https://raw.githubusercontent.com/Loukky/gfwlist-by-loukky/master/gfwlist.txt",
