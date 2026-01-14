@@ -143,48 +143,62 @@ def extract_domains_from_line(line_content):
 # ================= 核心逻辑 =================
 
 def get_data():
-    """下载并预处理数据"""
+    """下载并预处理数据 (严格模式：忽略 # 和 // 开头的注释)"""
     print(">>> 开始下载数据...")
+    
+    # 通用处理函数：按行处理，忽略注释
+    def process_content_by_line(content, target_set):
+        if not content: return
+        try:
+            # 尝试解码为字符串处理
+            text = content.decode('utf-8', errors='ignore')
+            for line in text.splitlines():
+                line = line.strip()
+                # 1. 忽略空行
+                if not line: continue
+                
+                # 2. 忽略 # 或 // 开头的注释行 (关键修改)
+                # startswith 传入元组，只要匹配其中任意一个前缀就返回 True
+                if line.startswith(("#", "//")): continue
+                
+                # 3. 在非注释行中提取域名
+                matches = EXTRACT_PATTERN.findall(line.encode('utf-8'))
+                for m in matches:
+                    d = clean_domain(m)
+                    if d: target_set.add(d)
+        except Exception as e:
+            print(f"处理出错: {e}")
 
-    # 1. 下载 cnacc_domain (合并后的列表，统一使用正则提取)
+    # 1. 下载 cnacc_domain
     for url in SOURCES["cnacc_domain"]:
         content = download_url(url)
-        if content:
-            # 暴力提取所有长得像域名的东西
-            matches = EXTRACT_PATTERN.findall(content)
-            for m in matches:
-                d = clean_domain(m)
-                if d: DATA_STORE["cnacc_raw"].add(d)
+        process_content_by_line(content, DATA_STORE["cnacc_raw"])
 
     # 2. 下载 gfwlist_base64
     for url in SOURCES["gfwlist_base64"]:
         content = download_url(url)
         if content:
             try:
-                decoded = base64.b64decode(content)
-                for line in decoded.splitlines():
-                    d = clean_domain(line)
-                    if d: DATA_STORE["gfwlist_raw"].add(d)
+                # Base64 解码后，也同样按行处理
+                decoded_content = base64.b64decode(content)
+                process_content_by_line(decoded_content, DATA_STORE["gfwlist_raw"])
             except:
                 print(f"Base64 解码失败: {url}")
 
-    # 3. 下载 gfwlist_domain (也使用正则提取，兼容各种杂乱格式)
+    # 3. 下载 gfwlist_domain
     for url in SOURCES["gfwlist_domain"]:
         content = download_url(url)
-        if content:
-            # 同样使用暴力提取，防止格式不统一
-            matches = EXTRACT_PATTERN.findall(content)
-            for m in matches:
-                d = clean_domain(m)
-                if d: DATA_STORE["gfwlist_raw"].add(d)
+        process_content_by_line(content, DATA_STORE["gfwlist_raw"])
 
-    # 4. 下载 Modify 文件
+    # 4. 下载 Modify 文件 (自定义规则)
     for url in SOURCES["modify"]:
         content = download_url(url)
         if content:
-            for line in content.splitlines():
-                line_str = line.decode('utf-8', errors='ignore').strip()
-                if line_str and not line_str.startswith("#"):
+            text = content.decode('utf-8', errors='ignore')
+            for line in text.splitlines():
+                line_str = line.strip()
+                # 显式忽略注释行 (这里也同步更新了)
+                if line_str and not line_str.startswith(("#", "//")):
                     DATA_STORE["modify_rules"].append(line_str)
 
     print(f"下载完成。CN原始数量: {len(DATA_STORE['cnacc_raw'])}, GFW原始数量: {len(DATA_STORE['gfwlist_raw'])}")
