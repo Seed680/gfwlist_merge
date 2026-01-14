@@ -71,6 +71,8 @@ SOURCES = {
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Crypto/Crypto.yaml",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Global/Global_Domain.list",
         "https://raw.githubusercontent.com/pexcn/gfwlist-extras/master/gfwlist-extras.txt",
+
+"https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Global/Global_Domain_For_Clash.txt",
     ],
     "modify": [
         "https://raw.githubusercontent.com/Seed680/gfwlist_merge/refs/heads/main/data_modify.conf"
