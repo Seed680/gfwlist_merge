@@ -32,6 +32,11 @@ jobs:
       # 3. 运行您的脚本
       - name: Run release script
         run: |
+          echo "📂当前目录："
+          pwd
+          echo "📂 当前目录文件列表："
+          ls -R
+          echo "--------------------------------"
           python release.py
           echo "✅ 规则生成完毕，准备发布..."
           ls -R gfwlist2_python_output  # 打印目录结构以供调试
