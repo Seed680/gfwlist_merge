@@ -53,6 +53,6 @@ jobs:
           prerelease: false
           # 标记为最新版本
           make_latest: true
-          files: gfwlist2_output/*
+          files: ./gfwlist2_output/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
