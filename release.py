@@ -9,27 +9,27 @@ import ssl
 import time
 import urllib.error
 import urllib.request
+from collections import defaultdict
 
 # ================= 配置区域 =================
+
+# 🔴 Debug 开关：设置为 True 后，生成的文件将包含来源注释
+DEBUG_MODE = True
 
 # 工作目录
 WORK_DIR = "./gfwlist2_output"
 TEMP_DIR = "./Temp_Python"
 
-# [验证用正则] 严格校验 (完美支持 0.com)
+# [验证用正则] 严格校验
 VALID_DOMAIN_PATTERN = re.compile(r'^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.([a-z]{2,13}|[a-z0-9-]{2,30}\.[a-z]{2,3})$')
-# [提取用正则] 粗略提取 (用于从乱七八糟的文本中把域名抠出来)
+# [提取用正则] 粗略提取
 EXTRACT_PATTERN = re.compile(rb'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
-
-# 简易正则 (用于匹配 lite 模式的顶级后缀)
-LITE_DOMAIN_PATTERN = re.compile(r'^([a-z]{2,13}|[a-z0-9-]{2,30}\.[a-z]{2,3})$')
 
 # 忽略 SSL 验证
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# 源列表定义 (已合并)
+# 源列表定义
 SOURCES = {
-    # 所有的国内域名源 (Clash/V2Ray/Dnsmasq/Text 混用)
     "cnacc_domain": [
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Apple/Apple_Classical_No_Resolve.yaml",
@@ -56,10 +56,6 @@ SOURCES = {
         "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/accelerated-domains.china.conf",
         "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf",
         "https://raw.githubusercontent.com/neodevpro/neodevhost/refs/heads/master/allow",
-
-"https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/PrivateTracker/PrivateTracker.yaml",
-
-
     ],
     "gfwlist_base64": [
         "https://raw.githubusercontent.com/Loukky/gfwlist-by-loukky/master/gfwlist.txt",
@@ -67,7 +63,8 @@ SOURCES = {
         "https://raw.githubusercontent.com/poctopus/gfwlist-plus/master/gfwlist-plus.txt",
     ],
     "gfwlist_domain": [
- "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt",
+        "https://raw.githubusercontent.com/neodevpro/neodevhost/refs/heads/master/block",
+        "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt",
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/greatfire.txt",
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Proxy/Proxy_Domain_For_Clash.txt",
@@ -75,8 +72,6 @@ SOURCES = {
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Crypto/Crypto.yaml",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Global/Global_Domain.list",
         "https://raw.githubusercontent.com/pexcn/gfwlist-extras/master/gfwlist-extras.txt",
-
-"https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Global/Global_Domain_For_Clash.txt",
     ],
     "modify": [
         "https://raw.githubusercontent.com/Seed680/gfwlist_merge/refs/heads/main/data_modify.conf"
@@ -90,10 +85,13 @@ DATA_STORE = {
     "modify_rules": []
 }
 
+# 🟢 溯源追踪器： { "google.com": {"gfwlist.txt", "google-cn.txt"} }
+SOURCE_TRACKER = defaultdict(set)
+
 # ================= 辅助函数 =================
 
 def download_url(url, retries=3):
-    """下载 URL 内容，带重试机制"""
+    """下载 URL 内容"""
     print(f"正在下载: {url}")
     for i in range(retries):
         try:
@@ -110,21 +108,16 @@ def clean_domain(domain):
     if isinstance(domain, bytes):
         domain = domain.decode('utf-8', errors='ignore')
 
-    if not domain:
-        return ""
-
+    if not domain: return ""
     d = domain.strip().lower()
 
-    # 移除常见杂质 (虽然正则提取已经过滤了大半，但清洗一下更保险)
+    # 移除常见前缀/干扰
     d = re.sub(r'^https?://', '', d)
     d = d.replace('domain:', '').replace('full:', '').replace('server=/', '')
     d = d.replace('/114.114.114.114', '').replace('|', '')
 
-    # 移除行首的点
-    if d.startswith('.'):
-        d = d[1:]
+    if d.startswith('.'): d = d[1:]
 
-    # 严格校验：确保提取出来的是合法域名
     if VALID_DOMAIN_PATTERN.match(d):
         return d
     return ""
@@ -137,113 +130,145 @@ def get_root_domain(domain):
     return domain
 
 def extract_domains_from_line(line_content):
-    """从单行内容中提取多个域名，支持空格和逗号分隔"""
+    """从单行文本提取域名 (用于 modify 规则)"""
     raw_domains = line_content.replace(',', ' ').split()
     cleaned = []
     for d in raw_domains:
         cd = clean_domain(d)
-        if cd:
-            cleaned.append(cd)
+        if cd: cleaned.append(cd)
     return cleaned
+
+def get_filename_from_url(url):
+    """从 URL 提取文件名用于标识"""
+    if not url: return "unknown"
+    return url.split('/')[-1]
 
 # ================= 核心逻辑 =================
 
 def get_data():
-    """下载并预处理数据 (严格模式：忽略 # 和 // 开头的注释)"""
+    """下载并预处理数据 (带溯源功能)"""
     print(">>> 开始下载数据...")
-    
-    # 通用处理函数：按行处理，忽略注释
-    def process_content_by_line(content, target_set):
+
+    # 通用处理函数：按行处理 + 记录来源
+    def process_content_by_line(content, target_set, source_tag):
         if not content: return
         try:
-            # 尝试解码为字符串处理
             text = content.decode('utf-8', errors='ignore')
             for line in text.splitlines():
                 line = line.strip()
-                # 1. 忽略空行
                 if not line: continue
+                if line.startswith(("#", "//")): continue # 忽略注释
                 
-                # 2. 忽略 # 或 // 开头的注释行 (关键修改)
-                # startswith 传入元组，只要匹配其中任意一个前缀就返回 True
-                if line.startswith(("#", "//")): continue
-                
-                # 3. 在非注释行中提取域名
                 matches = EXTRACT_PATTERN.findall(line.encode('utf-8'))
                 for m in matches:
                     d = clean_domain(m)
-                    if d: target_set.add(d)
+                    if d: 
+                        target_set.add(d)
+                        # 🟢 记录来源
+                        SOURCE_TRACKER[d].add(source_tag)
         except Exception as e:
             print(f"处理出错: {e}")
 
     # 1. 下载 cnacc_domain
     for url in SOURCES["cnacc_domain"]:
         content = download_url(url)
-        process_content_by_line(content, DATA_STORE["cnacc_raw"])
+        # 使用文件名作为来源标签
+        fname = get_filename_from_url(url)
+        process_content_by_line(content, DATA_STORE["cnacc_raw"], fname)
 
     # 2. 下载 gfwlist_base64
     for url in SOURCES["gfwlist_base64"]:
         content = download_url(url)
+        fname = get_filename_from_url(url)
         if content:
             try:
-                # Base64 解码后，也同样按行处理
-                decoded_content = base64.b64decode(content)
-                process_content_by_line(decoded_content, DATA_STORE["gfwlist_raw"])
+                decoded = base64.b64decode(content)
+                process_content_by_line(decoded, DATA_STORE["gfwlist_raw"], fname)
             except:
                 print(f"Base64 解码失败: {url}")
 
     # 3. 下载 gfwlist_domain
     for url in SOURCES["gfwlist_domain"]:
         content = download_url(url)
-        process_content_by_line(content, DATA_STORE["gfwlist_raw"])
+        fname = get_filename_from_url(url)
+        process_content_by_line(content, DATA_STORE["gfwlist_raw"], fname)
 
-    # 4. 下载 Modify 文件 (自定义规则)
+    # 4. 下载 Modify 文件
     for url in SOURCES["modify"]:
         content = download_url(url)
         if content:
             text = content.decode('utf-8', errors='ignore')
             for line in text.splitlines():
                 line_str = line.strip()
-                # 显式忽略注释行 (这里也同步更新了)
                 if line_str and not line_str.startswith(("#", "//")):
                     DATA_STORE["modify_rules"].append(line_str)
 
     print(f"下载完成。CN原始数量: {len(DATA_STORE['cnacc_raw'])}, GFW原始数量: {len(DATA_STORE['gfwlist_raw'])}")
 
 def analyse_data():
-    """分析、分类、去重、合并数据 (新规则)"""
+    """分析数据"""
     print(">>> 开始分析数据...")
 
-    cn_add = set()      # 明确添加到 CN
-    cn_remove = set()   # 从 CN 移除 (后缀匹配)
-    gfw_add = set()     # 明确添加到 GFW
-    gfw_remove = set()  # 从 GFW 移除 (后缀匹配)
+    cn_add = set()
+    cn_remove = set()
+    gfw_add = set()
+    gfw_remove = set()
+
+    # 辅助函数：记录自定义规则的来源
+    def add_with_tracking(domain_set, domains, tag):
+        for d in domains:
+            domain_set.add(d)
+            SOURCE_TRACKER[d].add(tag)
 
     # 解析 Modify 规则
     for rule in DATA_STORE["modify_rules"]:
-        if rule.startswith("@++"):
-            for d in extract_domains_from_line(rule[3:]):
-                cn_add.add(d)
+        # 提取当前行的所有域名
+        domains_in_line = []
+        
+        # 判断指令类型并去除指令前缀
+        rule_body = ""
+        action_type = ""
+        
+        if rule.startswith("@++"): 
+            rule_body = rule[3:]
+            action_type = "cn_add"
         elif rule.startswith("@--"):
-            for d in extract_domains_from_line(rule[3:]):
-                cn_remove.add(d)
+            rule_body = rule[3:]
+            action_type = "cn_remove"
         elif rule.startswith("!++"):
-            for d in extract_domains_from_line(rule[3:]):
-                gfw_add.add(d)
+            rule_body = rule[3:]
+            action_type = "gfw_add"
         elif rule.startswith("!--"):
-            for d in extract_domains_from_line(rule[3:]):
-                gfw_remove.add(d)
+            rule_body = rule[3:]
+            action_type = "gfw_remove"
         elif rule.startswith("@+"):
-            for d in extract_domains_from_line(rule[2:]):
-                cn_add.add(d)
-                gfw_remove.add(d)
+            rule_body = rule[2:]
+            action_type = "cn_force" # CN+ GFW-
         elif rule.startswith("!+"):
-            for d in extract_domains_from_line(rule[2:]):
-                gfw_add.add(d)
-                cn_remove.add(d)
+            rule_body = rule[2:]
+            action_type = "gfw_force" # GFW+ CN-
 
-    print(f"自定义规则统计: CN+{len(cn_add)}, CN-{len(cn_remove)}, GFW+{len(gfw_add)}, GFW-{len(gfw_remove)}")
+        if action_type:
+            domains_in_line = extract_domains_from_line(rule_body)
+            # 标记来源为 [My_Custom_Rule]
+            custom_tag = "[My_Custom_Rule]"
+            
+            if action_type == "cn_add":
+                add_with_tracking(cn_add, domains_in_line, custom_tag)
+            elif action_type == "cn_remove":
+                add_with_tracking(cn_remove, domains_in_line, custom_tag)
+            elif action_type == "gfw_add":
+                add_with_tracking(gfw_add, domains_in_line, custom_tag)
+            elif action_type == "gfw_remove":
+                add_with_tracking(gfw_remove, domains_in_line, custom_tag)
+            elif action_type == "cn_force":
+                add_with_tracking(cn_add, domains_in_line, custom_tag)
+                add_with_tracking(gfw_remove, domains_in_line, custom_tag)
+            elif action_type == "gfw_force":
+                add_with_tracking(gfw_add, domains_in_line, custom_tag)
+                add_with_tracking(cn_remove, domains_in_line, custom_tag)
 
-    # 过滤函数：支持后缀匹配移除
+    # 过滤函数
     def filter_list_with_suffix(source_set, remove_set):
         result = set()
         remove_suffixes = tuple("." + d for d in remove_set)
@@ -253,11 +278,11 @@ def analyse_data():
             result.add(d)
         return result
 
-    print("应用移除规则 (后缀匹配)...")
+    print("应用移除规则...")
     cn_filtered = filter_list_with_suffix(DATA_STORE["cnacc_raw"], cn_remove)
     gfw_filtered = filter_list_with_suffix(DATA_STORE["gfwlist_raw"], gfw_remove)
 
-    # 交叉去重：如果 CN 列表里有，就从 GFW 列表里删掉
+    # 交叉去重
     gfw_filtered = gfw_filtered - cn_filtered
 
     # 应用增加规则
@@ -273,11 +298,11 @@ def analyse_data():
     DATA_STORE["gfw_final"] = sorted(list(gfw_final))
     DATA_STORE["lite_cn_final"] = sorted(list(lite_cn_final))
     DATA_STORE["lite_gfw_final"] = sorted(list(lite_gfw_final))
-
-    print(f"分析完成。CN最终: {len(DATA_STORE['cn_final'])}, GFW最终: {len(DATA_STORE['gfw_final'])}")
+    
+    print(f"分析完成。CN: {len(DATA_STORE['cn_final'])}, GFW: {len(DATA_STORE['gfw_final'])}")
 
 def output_data():
-    """生成最终文件"""
+    """生成最终文件 (Debug 模式下包含注释)"""
     print(">>> 开始生成规则文件...")
 
     target_dirs = ["smartdns", "clash", "domain"]
@@ -285,17 +310,14 @@ def output_data():
         os.makedirs(os.path.join(WORK_DIR, f"gfwlist2{sw}"), exist_ok=True)
 
     tasks = [
-        # SmartDNS (GFW / CN)
         {"sw": "smartdns", "file": "black", "mode": "full", "group": "GFW"},
         {"sw": "smartdns", "file": "black", "mode": "lite", "group": "GFW"},
         {"sw": "smartdns", "file": "white", "mode": "full", "group": "CN"},
         {"sw": "smartdns", "file": "white", "mode": "lite", "group": "CN"},
-        # Clash
         {"sw": "clash", "file": "black", "mode": "full"},
         {"sw": "clash", "file": "black", "mode": "lite"},
         {"sw": "clash", "file": "white", "mode": "full"},
         {"sw": "clash", "file": "white", "mode": "lite"},
-        # Domain
         {"sw": "domain", "file": "black", "mode": "full"},
         {"sw": "domain", "file": "black", "mode": "lite"},
         {"sw": "domain", "file": "white", "mode": "full"},
@@ -306,10 +328,10 @@ def output_data():
         sw = task.get("sw")
         mode = task.get("mode")
         ftype = task.get("file")
-
+        
         data_list = []
         is_lite = "lite" in mode
-
+        
         if ftype == "black":
             data_list = DATA_STORE["lite_gfw_final"] if is_lite else DATA_STORE["gfw_final"]
         elif ftype == "white":
@@ -318,21 +340,39 @@ def output_data():
         ext = "txt"
         if sw == "clash": ext = "yaml"
         elif sw == "smartdns": ext = "conf"
-
+        
         filename = f"{ftype}list_{mode}.{ext}"
         filepath = os.path.join(WORK_DIR, f"gfwlist2{sw}", filename)
-
+        
         with open(filepath, 'w', encoding='utf-8') as f:
             if sw == "clash":
                 f.write("payload:\n")
-
+            
             for domain in data_list:
+                # 🟢 生成 Debug 注释
+                comment = ""
+                if DEBUG_MODE:
+                    # 获取该域名的来源列表
+                    sources = SOURCE_TRACKER.get(domain)
+                    
+                    # 只有在非 lite 模式，或者 lite 模式下域名正好存在于 tracker 中时才能准确显示
+                    # (Lite 模式是通过 get_root_domain 计算出来的，可能在 Tracker 里没有直接键值)
+                    if not sources and is_lite:
+                        # 尝试在 Lite 模式下模糊匹配 (可选，但为了性能暂时只匹配精确的)
+                        pass
+                        
+                    if sources:
+                        # 将 set 转换为逗号分隔字符串
+                        src_str = ", ".join(sorted(list(sources)))
+                        comment = f" # [{src_str}]"
+                
+                # 写入文件
                 if sw == "clash":
-                    f.write(f"  - DOMAIN-SUFFIX,{domain}\n")
+                    f.write(f"  - DOMAIN-SUFFIX,{domain}{comment}\n")
                 elif sw == "smartdns":
-                    f.write(f"nameserver /{domain}/{task.get('group')}\n")
+                    f.write(f"nameserver /{domain}/{task.get('group')}{comment}\n")
                 elif sw == "domain":
-                    f.write(f"{domain}\n")
+                    f.write(f"{domain}{comment}\n")
 
     print(f"所有规则已生成至: {WORK_DIR}")
 
