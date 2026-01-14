@@ -1,58 +1,121 @@
 name: Update Rules
 
 on:
-  # 定时触发：每天 UTC 时间 22:00 (北京时间次日 06:00)
   schedule:
     - cron: '0 22 * * *'
-  
-  # 手动触发：允许在 Actions 页面手动点击运行
   workflow_dispatch:
-  
-  # 代码变动触发：当 release.py 或相关文件修改时自动运行
   push:
     paths:
       - 'release.py'
       - '.github/workflows/update_rules.yml'
+      - 'data_modify.conf'
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. 检出代码
       - name: Checkout codebase
         uses: actions/checkout@v4
 
-      # 2. 设置 Python 环境
       - name: Set up Python 3
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # 3. 运行您的脚本
       - name: Run release script
         run: |
-          echo "📂当前目录："
-          pwd
-          echo "📂 当前目录文件列表："
-          ls -R
-          echo "--------------------------------"
           python release.py
-          echo "✅ 规则生成完毕，准备发布..."
-          ls -R gfwlist2_output  # 打印目录结构以供调试
-      # 4. 将生成的文件推送到 release 分支
+          echo "✅ 规则生成完毕"
+          ls -d gfwlist2_output
+
+      # ========================================================
+      # 【核心修改】将生成的文件推送到一个独立的 rules 分支
+      # 使用 -f 强制推送，覆盖历史，保持仓库永远只有最新状态
+      # ========================================================
+      - name: Deploy to separate branch
+        run: |
+          # 1. 进入生成目录
+          cd gfwlist2_output
+          
+          # 2. 初始化一个新的 git 仓库 (相当于切断了与 main 分支的联系)
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 3. 创建一个孤儿分支 (Orphan Branch)
+          git checkout -b rules
+          
+          # 4. 添加所有生成的文件
+          git add .
+          git commit -m "Update rules: $(date +'%Y-%m-%d')"
+          
+          # 5. 强制推送到远程仓库的 rules 分支
+          # 注意：这会覆盖远程 rules 分支上的所有历史记录
+          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} rules
+
+      # 4. 整理发布文件 (Release 用的 ZIP 包)
+      - name: Prepare assets
+        run: |
+          mkdir dist
+          
+          # Clash
+          cp gfwlist2_output/gfwlist2clash/blacklist_full.yaml dist/clash_gfw_full.yaml
+          cp gfwlist2_output/gfwlist2clash/blacklist_lite.yaml dist/clash_gfw_lite.yaml
+          cp gfwlist2_output/gfwlist2clash/whitelist_full.yaml dist/clash_cn_full.yaml
+          cp gfwlist2_output/gfwlist2clash/whitelist_lite.yaml dist/clash_cn_lite.yaml
+
+          # SmartDNS
+          cp gfwlist2_output/gfwlist2smartdns/blacklist_full.conf dist/smartdns_gfw_full.conf
+          cp gfwlist2_output/gfwlist2smartdns/blacklist_lite.conf dist/smartdns_gfw_lite.conf
+          cp gfwlist2_output/gfwlist2smartdns/whitelist_full.conf dist/smartdns_cn_full.conf
+          cp gfwlist2_output/gfwlist2smartdns/whitelist_lite.conf dist/smartdns_cn_lite.conf
+
+          # Domain
+          cp gfwlist2_output/gfwlist2domain/blacklist_full.txt dist/domain_gfw_full.txt
+          cp gfwlist2_output/gfwlist2domain/blacklist_lite.txt dist/domain_gfw_lite.txt
+          cp gfwlist2_output/gfwlist2domain/whitelist_full.txt dist/domain_cn_full.txt
+          cp gfwlist2_output/gfwlist2domain/whitelist_lite.txt dist/domain_cn_lite.txt
+          
+          ls -l dist/
+
+      # ========================================================
+      # 【新增步骤】获取当前时间 (北京时间) 并存入环境变量
+      # ========================================================
+      - name: Get current date
+        run: |
+          # 设置时区为 Asia/Shanghai，并将时间写入 RELEASE_TIME 环境变量
+          echo "RELEASE_TIME=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      # ========================================================
+      # 5. 上传 Release (使用刚才生成的环境变量)
+      # ========================================================
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          # 固定使用 'latest' 标签，保证订阅链接不变
           tag_name: latest
-          # Release 的标题
           name: Auto-updated Rules
-          body: "Rules updated on $(date +'%Y-%m-%d %H:%M:%S')"
+          # 注意这里变成了 ${{ env.RELEASE_TIME }}
+          body: |
+            Rules updated on ${{ env.RELEASE_TIME }}
+            
+            ### Clash
+            - `clash_gfw_full.yaml` / `clash_gfw_lite.yaml`
+            - `clash_cn_full.yaml` / `clash_cn_lite.yaml`
+            
+            ### SmartDNS
+            - `smartdns_gfw_full.conf` / `smartdns_gfw_lite.conf`
+            - `smartdns_cn_full.conf` / `smartdns_cn_lite.conf`
+            
+            ### Plain Domain
+            - `domain_gfw_full.txt` / `domain_gfw_lite.txt`
+            - `domain_cn_full.txt` / `domain_cn_lite.txt`
           draft: false
           prerelease: false
-          # 标记为最新版本
           make_latest: true
-          files: ./gfwlist2_output/*
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
