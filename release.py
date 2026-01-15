@@ -62,12 +62,10 @@ SOURCES = {
         "https://raw.githubusercontent.com/poctopus/gfwlist-plus/master/gfwlist-plus.txt",
     ],
     "gfwlist_domain": [
-        "https://raw.githubusercontent.com/neodevpro/neodevhost/refs/heads/master/block",
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt",
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/greatfire.txt",
         "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Proxy/Proxy_Domain_For_Clash.txt",
-        "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/google-cn.txt",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Crypto/Crypto.yaml",
         "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/Global/Global_Domain.list",
         "https://raw.githubusercontent.com/pexcn/gfwlist-extras/master/gfwlist-extras.txt",
