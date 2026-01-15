@@ -14,7 +14,7 @@ from collections import defaultdict
 # ================= 配置区域 =================
 
 # 🔴 Debug 开关：设置为 True 后，生成的文件将包含来源注释
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 # 工作目录
 WORK_DIR = "./gfwlist2_output"
